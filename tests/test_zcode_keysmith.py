@@ -82,10 +82,12 @@ def test_patch_rewrites_custom_system_prompt_to_managed_file():
 
     patched = mod.build_patched_runtime_text(original, "/tmp/system-role.md")
 
-    assert "customSystemPrompt:(this.config.systemPrompt" in patched
+    assert "if(x&&x.trim())return x" in patched
+    assert "return this.config.systemPrompt" in patched
     assert "ZCODE_KEYSMITH_SYSTEM_FILE" in patched
     assert "readFileSync" in patched
-    assert "customSystemPrompt:this.config.systemPrompt" not in patched
+    assert "customSystemPrompt:this.config.systemPrompt,language:" not in patched
+    assert "this.config.systemPrompt&&this.config.systemPrompt.trim()?this.config.systemPrompt:" not in patched
 
 
 def test_patch_requires_known_runtime_anchor():
@@ -162,9 +164,12 @@ def test_install_writes_wrapper_launch_agent_and_config(tmp_path, capsys, monkey
     assert wrapper.exists()
     assert env_script.exists()
     assert "ZCODE_KEYSMITH_SYSTEM_FILE" in wrapper.read_text(encoding="utf-8")
+    assert "if(x&&x.trim())return x" in wrapper.read_text(encoding="utf-8")
     assert "launchctl setenv ZCODE_AGENT_SERVER_COMMAND" in env_script.read_text(encoding="utf-8")
+    assert "NODE_OPTIONS" not in env_script.read_text(encoding="utf-8")
     assert config["tool_version"] == mod.VERSION
     assert config["mode"] == "zcode-app-wrapper"
+    assert config["injection_mode"] == "wrapper"
     assert config["app_bundle_modified"] is False
     assert plist["Label"] == "com.jia.zcode-keysmith.env"
     assert plist["ProgramArguments"] == [str(env_script)]
@@ -490,8 +495,125 @@ def test_windows_environment_uses_python_and_wrapper_argument(tmp_path, monkeypa
 
     assert values["ZCODE_AGENT_SERVER_COMMAND"] == str(Path(sys.executable).resolve())
     assert args == [str(paths.wrapper), "app-server", "--stdio"]
+    assert "NODE_OPTIONS" not in values
     assert paths.env_script.name == "zcode-keysmith-env.ps1"
     assert paths.launch_agent is None
+    assert paths.preload.name == "zcode-keysmith-preload.cjs"
+
+
+def test_storage_startup_builds_use_runtime_patch_instead_of_agent_command_override(tmp_path):
+    runtime = tmp_path / "zcode.cjs"
+    make_runtime(runtime)
+    source = tmp_path / "source.md"
+    source.write_text("# system\n", encoding="utf-8")
+    paths = mod.build_paths(tmp_path / "managed", tmp_path / "agent.plist")
+    plan = mod.InstallPlan(
+        paths=paths,
+        source_system_file=source,
+        zcode_runtime=runtime,
+        node_command=tmp_path / "node",
+        activate=False,
+        injection_mode="runtime-patch",
+    )
+
+    values = mod.env_values(plan)
+    env_script = mod.render_env_script(plan)
+    config = json.loads(mod.render_config(plan))
+
+    assert "ZCODE_AGENT_SERVER_COMMAND" not in values
+    assert "ZCODE_AGENT_SERVER_ARGS_JSON" not in values
+    assert "NODE_OPTIONS" not in values
+    assert "ZCODE_AGENT_SERVER_COMMAND" not in env_script
+    assert "NODE_OPTIONS" not in env_script
+    assert config["mode"] == "zcode-app-runtime-patch"
+    assert config["injection_mode"] == "runtime-patch"
+    assert config["agent_server_command"] is None
+    assert config["node_options"] is None
+    assert config["app_bundle_modified"] is True
+    assert "ZCODE_AGENT_SERVER_COMMAND" in mod.stale_env_keys(plan)
+    assert "ZCODE_AGENT_SERVER_ARGS_JSON" in mod.stale_env_keys(plan)
+    assert "NODE_OPTIONS" in mod.stale_env_keys(plan)
+
+
+def test_runtime_patch_install_rewrites_vendor_runtime_and_keeps_backup(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(mod, "is_zcode_running", lambda: False)
+    app = tmp_path / "ZCode.app"
+    asar = app / "Contents" / "Resources" / "app.asar"
+    asar.parent.mkdir(parents=True)
+    asar.write_bytes(b"ZCODE_AGENT_SERVER_COMMAND\nsupportsStorageStartup\n")
+    runtime = app / "Contents" / "Resources" / "glm" / "zcode.cjs"
+    runtime.parent.mkdir(parents=True)
+    make_runtime(runtime)
+    original = runtime.read_text(encoding="utf-8")
+    source = tmp_path / "source.md"
+    source.write_text("# managed system\n", encoding="utf-8")
+    node_command = tmp_path / "node"
+    node_command.write_text("#!/bin/sh\n", encoding="utf-8")
+    node_command.chmod(0o755)
+    managed = tmp_path / "managed"
+
+    code = mod.main([
+        "install",
+        "--system-file", str(source),
+        "--managed-dir", str(managed),
+        "--launch-agent", str(tmp_path / "agent.plist"),
+        "--zcode-runtime", str(runtime),
+        "--node-command", str(node_command),
+        "--yes",
+        "--no-activate",
+    ])
+
+    assert code == 0
+    patched = runtime.read_text(encoding="utf-8")
+    assert "if(x&&x.trim())return x" in patched
+    assert "customSystemPrompt:this.config.systemPrompt,language:" not in patched
+    config = json.loads((managed / "config.json").read_text(encoding="utf-8"))
+    assert config["injection_mode"] == "runtime-patch"
+    assert config["app_bundle_modified"] is True
+    backup = Path(config["runtime_original_backup"])
+    assert backup.is_file()
+    assert backup.read_text(encoding="utf-8") == original
+    env_script = (managed / "bin" / "zcode-keysmith-env.sh").read_text(encoding="utf-8")
+    assert "ZCODE_AGENT_SERVER_COMMAND" not in env_script
+    assert "NODE_OPTIONS" not in env_script
+
+    code = mod.main([
+        "install",
+        "--system-file", str(source),
+        "--managed-dir", str(managed),
+        "--launch-agent", str(tmp_path / "agent.plist"),
+        "--zcode-runtime", str(runtime),
+        "--node-command", str(node_command),
+        "--yes",
+        "--no-activate",
+    ])
+    assert code == 0
+    config = json.loads((managed / "config.json").read_text(encoding="utf-8"))
+    backup = Path(config["runtime_original_backup"])
+    assert backup.is_file()
+    assert backup.read_text(encoding="utf-8") == original
+    assert "if(x&&x.trim())return x" in runtime.read_text(encoding="utf-8")
+
+
+def test_injection_mode_follows_storage_startup_marker(tmp_path):
+    mac_app = tmp_path / "ZCode.app"
+    mac_asar = mac_app / "Contents" / "Resources" / "app.asar"
+    mac_asar.parent.mkdir(parents=True)
+    mac_asar.write_bytes(b"ZCODE_AGENT_SERVER_COMMAND\nsupportsStorageStartup\n")
+
+    assert mod.app_requires_storage_startup(mac_app) is True
+    assert mod.injection_mode_for_app(mac_app) == "runtime-patch"
+    mac_asar.write_bytes(b"ZCODE_AGENT_SERVER_COMMAND\n")
+    assert mod.app_requires_storage_startup(mac_app) is False
+    assert mod.injection_mode_for_app(mac_app) == "wrapper"
+
+    win_app = tmp_path / "ZCode"
+    win_asar = win_app / "resources" / "app.asar"
+    win_asar.parent.mkdir(parents=True)
+    win_asar.write_bytes(b"ZCODE_AGENT_SERVER_COMMAND\nsupportsStorageStartup\n")
+    assert mod.app_requires_storage_startup(win_app) is True
+    assert mod.injection_mode_for_app(win_app) == "runtime-patch"
 
 
 def test_windows_activation_lines_are_preserved_in_json_report(tmp_path, capsys, monkeypatch):
@@ -508,7 +630,8 @@ def test_windows_activation_lines_are_preserved_in_json_report(tmp_path, capsys,
     payload = json.loads(capsys.readouterr().out)
 
     assert code == 0
-    assert len(payload["activation"]) == len(mod.MANAGED_ENV_KEYS)
+    set_lines = [item for item in payload["activation"] if item.endswith(": set")]
+    assert len(set_lines) == len(mod.MANAGED_ENV_KEYS)
     assert all(item.startswith("user environment ") for item in payload["activation"])
 
 
@@ -763,6 +886,7 @@ def test_macos_install_rolls_back_launchctl_and_files_on_activation_failure(tmp_
         paths.system_file: "old system",
         paths.config_file: "old config",
         paths.wrapper: "old wrapper",
+        paths.preload: "old preload",
         paths.env_script: "old env",
         paths.launch_agent: "old plist",
     }
