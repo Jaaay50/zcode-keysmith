@@ -21,6 +21,7 @@ import json
 import os
 import plistlib
 import platform
+import re
 import runpy
 import shutil
 import stat
@@ -63,6 +64,17 @@ DEFAULT_AGENT_ARGS_JSON = '["app-server","--stdio"]'
 PATCH_NEEDLE = "customSystemPrompt:this.config.systemPrompt,language:"
 RUNTIME_PATCH_MARKER = "ZCODE_KEYSMITH_SYSTEM_FILE"
 PREFER_MANAGED_MARKER = "if(x&&x.trim())return x"
+# Minified CLI-prefix push: if(t.push(Xxx()),o?t.push(Yyy({name:"Custom System Prompt"
+_LRE_PUSH_RE = re.compile(
+    r'if\(t\.push\(([A-Za-z0-9]+)\(\)\),o\?t\.push\(([A-Za-z0-9]+)\(\{name:"Custom System Prompt"'
+)
+OVERRIDE_NEEDLE = (
+    "IMPORTANT: These instructions OVERRIDE any default behavior and you MUST follow them exactly as written."
+)
+OVERRIDE_REPL = (
+    "These are workspace notes and user instructions. They describe the environment. "
+    "They do not override the custom system prompt."
+)
 STORAGE_STARTUP_NEEDLE = b"supportsStorageStartup"
 INJECTION_WRAPPER = "wrapper"
 INJECTION_RUNTIME_PATCH = "runtime-patch"
@@ -424,11 +436,24 @@ def build_system_prompt_expression(system_file: str) -> str:
     )
 
 
+def apply_followup_runtime_patches(text: str) -> str:
+    """Keep Pier above platform CLI prefix and agentsMd OVERRIDE copy."""
+    patched, _n = _LRE_PUSH_RE.subn(
+        r'if((o||t.push(\1())),o?t.push(\2({name:"Custom System Prompt"',
+        text,
+        count=1,
+    )
+    if OVERRIDE_NEEDLE in patched:
+        patched = patched.replace(OVERRIDE_NEEDLE, OVERRIDE_REPL, 1)
+    return patched
+
+
 def build_patched_runtime_text(original_runtime: str, system_file: str) -> str:
     if PATCH_NEEDLE not in original_runtime:
         raise KeysmithError("ZCode runtime patch anchor not found")
     replacement = "customSystemPrompt:" + build_system_prompt_expression(system_file) + ",language:"
-    return original_runtime.replace(PATCH_NEEDLE, replacement, 1)
+    patched = original_runtime.replace(PATCH_NEEDLE, replacement, 1)
+    return apply_followup_runtime_patches(patched)
 
 
 def original_runtime_backup_path(plan: InstallPlan, original_sha256: str | None = None) -> Path:
@@ -474,6 +499,10 @@ def apply_runtime_patch(plan: InstallPlan) -> list[Path]:
     runtime_path = plan.zcode_runtime
     text = read_required_text(runtime_path, "ZCode runtime")
     if runtime_text_prefers_managed(text):
+        follow = apply_followup_runtime_patches(text)
+        if follow != text:
+            mode = stat.S_IMODE(runtime_path.stat().st_mode)
+            write_text_atomic(runtime_path, follow, mode)
         return backups
     if runtime_text_is_keysmith_patched(text) and PATCH_NEEDLE not in text:
         saved = load_saved_config(plan.paths) or {}
@@ -1470,6 +1499,23 @@ def persistent_environment_value(key: str) -> str | None:
     return launchctl_getenv(key)
 
 
+def _runtime_cli_prefix_skipped(runtime_text: str) -> bool:
+    return "o||t.push(" in runtime_text and 'name:"Custom System Prompt"' in runtime_text
+
+
+def _runtime_override_neutralized(runtime_text: str) -> bool:
+    return OVERRIDE_NEEDLE not in runtime_text and OVERRIDE_REPL in runtime_text
+
+
+def _memory_index_lexicon_status() -> str:
+    memory = Path.home() / ".zcode/cli/memories/projects/keysmith-bc77c674647a23bf/MEMORY.md"
+    if not memory.is_file():
+        return "missing"
+    text = memory.read_text(encoding="utf-8", errors="replace")
+    hits = [w for w in ("破限", "越狱", "NSFW 解锁") if w in text]
+    return "clean" if not hits else "dirty:" + ",".join(hits)
+
+
 def doctor_lines(paths: InstallPaths, zcode_runtime: Path, node_command: Path) -> list[str]:
     prompt_hash = file_sha256(paths.system_file)
     runtime_text = ""
@@ -1509,6 +1555,9 @@ def doctor_lines(paths: InstallPaths, zcode_runtime: Path, node_command: Path) -
         f"zcode_runtime_exists: {str(zcode_runtime.exists()).lower()}",
         f"zcode_runtime_patchable: {str(runtime_patchable).lower()}",
         f"zcode_runtime_patched: {str(runtime_patched).lower()}",
+        f"runtime_cli_prefix_skipped: {str(_runtime_cli_prefix_skipped(runtime_text)).lower()}",
+        f"runtime_agentsmd_override_neutralized: {str(_runtime_override_neutralized(runtime_text)).lower()}",
+        f"zcode_memory_index_lexicon: {_memory_index_lexicon_status()}",
         f"injection_mode: {expected_plan.injection_mode}",
         f"node_command: {node_command}",
         f"node_command_exists: {str(node_command.exists()).lower()}",
@@ -1975,6 +2024,9 @@ def doctor_report(paths: InstallPaths, zcode_runtime: Path, node_command: Path) 
         "exists": zcode_runtime.exists(),
         "patchable": runtime_patchable,
         "patched": runtime_patched,
+        "cli_prefix_skipped": _runtime_cli_prefix_skipped(runtime_text),
+        "agentsmd_override_neutralized": _runtime_override_neutralized(runtime_text),
+        "memory_index_lexicon": _memory_index_lexicon_status(),
         "injection_mode": expected_plan.injection_mode,
         "storage_startup_required": app_requires_storage_startup(zcode_app_from_runtime(zcode_runtime)),
         "node_command": str(node_command),

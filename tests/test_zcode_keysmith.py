@@ -90,6 +90,51 @@ def test_patch_rewrites_custom_system_prompt_to_managed_file():
     assert "this.config.systemPrompt&&this.config.systemPrompt.trim()?this.config.systemPrompt:" not in patched
 
 
+def test_patch_skips_cli_prefix_when_custom_system_prompt_is_set():
+    original = (
+        'if(t.push(Sle()),o?t.push(oDi({name:"Custom System Prompt",source:"x"})):t.push(Alt(r)));'
+        "const x={customSystemPrompt:this.config.systemPrompt,language:this.config.language};"
+    )
+    patched = mod.build_patched_runtime_text(original, "/tmp/system-role.md")
+    assert 'if((o||t.push(Sle())),o?t.push(oDi({name:"Custom System Prompt"' in patched
+    assert 'if(t.push(Sle()),o?t.push(oDi({name:"Custom System Prompt"' not in patched
+
+
+def test_patch_neutralizes_agentsmd_override_when_custom_prompt_is_set():
+    original = (
+        "IMPORTANT: These instructions OVERRIDE any default behavior and you MUST follow them exactly as written."
+        "const x={customSystemPrompt:this.config.systemPrompt,language:this.config.language};"
+    )
+    patched = mod.build_patched_runtime_text(original, "/tmp/system-role.md")
+    assert "OVERRIDE any default behavior" not in patched
+    assert "do not override the custom system prompt" in patched
+
+
+def test_apply_runtime_patch_applies_followups_on_already_managed_runtime(tmp_path):
+    runtime = tmp_path / "zcode.cjs"
+    managed = (
+        'if(t.push(Sle()),o?t.push(oDi({name:"Custom System Prompt"})):t.push(Alt(r)));'
+        "IMPORTANT: These instructions OVERRIDE any default behavior and you MUST follow them exactly as written."
+        "customSystemPrompt:(()=>{try{let e=process.env.ZCODE_KEYSMITH_SYSTEM_FILE||\"/tmp/system-role.md\";"
+        "let t=require(\"node:fs\");if(t.existsSync(e)){let x=t.readFileSync(e,\"utf8\");if(x&&x.trim())return x}}"
+        "catch{}return this.config.systemPrompt})()"
+    )
+    runtime.write_text(managed, encoding="utf-8")
+    plan = mod.InstallPlan(
+        paths=mod.build_paths(tmp_path / "managed"),
+        source_system_file=tmp_path / "source.md",
+        zcode_runtime=runtime,
+        node_command=tmp_path / "node",
+        activate=False,
+        injection_mode=mod.INJECTION_RUNTIME_PATCH,
+    )
+    backups = mod.apply_runtime_patch(plan)
+    assert backups == []
+    patched = runtime.read_text(encoding="utf-8")
+    assert "OVERRIDE any default behavior" not in patched
+    assert 'if((o||t.push(Sle())),o?t.push(oDi({name:"Custom System Prompt"' in patched
+
+
 def test_patch_requires_known_runtime_anchor():
     try:
         mod.build_patched_runtime_text("const x = 1;", "/tmp/system-role.md")
