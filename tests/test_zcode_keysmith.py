@@ -116,7 +116,7 @@ def test_patch_accepts_zcode_314_runtime_anchor():
     assert "workflowActor:this.config.workflowActor,language:" in patched
     assert "customSystemPrompt:this.config.systemPrompt,workflowActor:this.config.workflowActor,language:" not in patched
     assert "customSystemPrompt:this.config.workflowActor===void 0?" in patched
-    assert ":this.config.systemPrompt,workflowActor:this.config.workflowActor" in patched
+    assert ":void 0,workflowActor:this.config.workflowActor" in patched
     assert 'if(s||l||t.push(JMe()),s?t.push(dGs({name:"Custom System Prompt"' in patched
     assert 'if(l||t.push(JMe()),s?t.push(dGs({name:"Custom System Prompt"' not in patched
     assert 'if(a!==void 0&&s)throw new Error("ContextBuilder: workflowActor and customSystemPrompt are mutually exclusive")' in patched
@@ -157,6 +157,9 @@ def test_zcode_314_prompt_keeps_workflow_context_native(tmp_path):
         {"name": "Custom System Prompt", "content": "managed system"}
     ]
     assert build({"workflowActor": "delegate"}) == [{"workflow": "delegate"}]
+    assert build({"workflowActor": "delegate", "systemPrompt": "vendor"}) == [
+        {"workflow": "delegate"}
+    ]
     (tmp_path / "system.md").unlink()
     assert build({"systemPrompt": "vendor"}) == [
         {"name": "Custom System Prompt", "content": "vendor"}
@@ -792,6 +795,7 @@ def test_runtime_patch_install_accepts_zcode_314_vendor_runtime(tmp_path, monkey
     assert "customSystemPrompt:this.config.systemPrompt,workflowActor:this.config.workflowActor,language:" not in patched
     assert "workflowActor:this.config.workflowActor,language:" in patched
     assert "customSystemPrompt:this.config.workflowActor===void 0?" in patched
+    assert ":void 0,workflowActor:this.config.workflowActor" in patched
     assert 'if(s||l||t.push(JMe()),s?t.push(dGs({name:"Custom System Prompt"' in patched
     assert 'if(a!==void 0&&s)throw new Error("ContextBuilder: workflowActor and customSystemPrompt are mutually exclusive")' in patched
     backup = Path(json.loads((managed / "config.json").read_text(encoding="utf-8"))["runtime_original_backup"])

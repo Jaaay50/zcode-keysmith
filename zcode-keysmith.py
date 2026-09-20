@@ -461,7 +461,7 @@ def replace_vendor_system_prompt_anchor(original_runtime: str, expression: str) 
     if needle is None:
         raise KeysmithError("ZCode runtime patch anchor not found")
     if needle == PATCH_NEEDLES[0]:
-        expression = "this.config.workflowActor===void 0?" + expression + ":this.config.systemPrompt"
+        expression = "this.config.workflowActor===void 0?" + expression + ":void 0"
     suffix = needle[len(CUSTOM_SYSTEM_PROMPT_ASSIGN) :]
     return original_runtime.replace(needle, "customSystemPrompt:" + expression + suffix, 1)
 
@@ -958,7 +958,7 @@ def render_preload(plan: InstallPlan) -> str:
         "    if (!source.includes(needle)) continue;\n"
         "    const suffix = needle.slice(\"customSystemPrompt:this.config.systemPrompt\".length);\n"
         "    const expression = needle === NEEDLES[0]\n"
-        "      ? \"this.config.workflowActor===void 0?\" + managedPromptExpression() + \":this.config.systemPrompt\"\n"
+        "      ? \"this.config.workflowActor===void 0?\" + managedPromptExpression() + \":void 0\"\n"
         "      : managedPromptExpression();\n"
         "    return source.replace(needle, \"customSystemPrompt:\" + expression + suffix);\n"
         "  }\n"
@@ -1123,7 +1123,7 @@ def patched_runtime_path() -> pathlib.Path:
     suffix = needle[len("customSystemPrompt:this.config.systemPrompt"):]
     expression = system_prompt_expression()
     if needle == PATCH_NEEDLES[0]:
-        expression = "this.config.workflowActor===void 0?" + expression + ":this.config.systemPrompt"
+        expression = "this.config.workflowActor===void 0?" + expression + ":void 0"
     replacement = "customSystemPrompt:" + expression + suffix
     patched = original.replace(needle, replacement, 1)
     digest = hashlib.sha256((str(ORIGINAL_RUNTIME) + "\\0" + original + "\\0" + replacement).encode("utf-8")).hexdigest()[:16]
