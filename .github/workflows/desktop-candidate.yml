@@ -242,7 +242,6 @@ jobs:
             $doctorText = ""
             if (Test-Path -LiteralPath $doctorFile) { $doctorText += Get-Content -LiteralPath $doctorFile -Raw }
             if (Test-Path -LiteralPath $doctorErr) { $doctorText += Get-Content -LiteralPath $doctorErr -Raw }
-            $doctorText = ($doctorOutput | Out-String)
             Write-Host "doctor exit $doctorExit"
             Write-Host $doctorText
             if ($doctorText -notmatch '"schema": "zcode-keysmith/v1"') {
