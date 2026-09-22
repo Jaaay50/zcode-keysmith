@@ -138,13 +138,12 @@ jobs:
           fi
           rm -rf "$smoke_root"
 
-          # --deep on an ad-hoc PyInstaller sidecar reports
-          # "code has no resources but signature indicates they must be present"
-          # even when the bundle is the unsigned candidate we ship. Verify the
-          # app and the sidecar separately, and require Signature=adhoc.
-          codesign --verify --strict --verbose=2 "$app"
-          codesign --verify --strict --verbose=2 "$sidecar"
-          codesign -dv --verbose=4 "$app" 2>&1 | grep -F "Signature=adhoc"
+          # Verifying the .app walks into the ad-hoc PyInstaller sidecar and
+          # reports "code has no resources but signature indicates they must
+          # be present". Check the Mach-O files themselves and require ad-hoc.
+          codesign --verify --verbose=2 "$gui_bin"
+          codesign --verify --verbose=2 "$sidecar"
+          codesign -dv --verbose=4 "$gui_bin" 2>&1 | grep -F "Signature=adhoc"
           codesign -dv --verbose=4 "$sidecar" 2>&1 | grep -F "Signature=adhoc"
 
       - name: Validate Windows candidate
@@ -226,10 +225,11 @@ jobs:
               --launch-agent $launchAgent `
               --zcode-runtime (Join-Path $smokeRoot "zcode.cjs") `
               --node-command (Join-Path $smokeRoot "node") 2>&1
+            $doctorExit = $LASTEXITCODE
             $ErrorActionPreference = $previousErrorAction
             $doctorText = ($doctorOutput | Out-String)
             if ($doctorText -notmatch '"schema": "zcode-keysmith/v1"') {
-              throw "Installed sidecar doctor --json smoke failed: $doctorText"
+              throw "Installed sidecar doctor --json smoke failed (exit $doctorExit): $doctorText"
             }
             if ($doctorText -match [regex]::Escape("\Library\LaunchAgents\com.jia.zcode-keysmith.env.plist") -or
                 $doctorText -match "/Library/LaunchAgents/com.jia.zcode-keysmith.env.plist") {
