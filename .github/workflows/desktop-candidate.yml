@@ -138,19 +138,25 @@ jobs:
           fi
           rm -rf "$smoke_root"
 
-          # Verifying the .app walks into the ad-hoc PyInstaller sidecar and
-          # reports "code has no resources but signature indicates they must
-          # be present". Check the Mach-O files themselves and require ad-hoc.
-          codesign --verify --verbose=2 "$gui_bin"
-          codesign --verify --verbose=2 "$sidecar"
-          codesign -dv --verbose=4 "$gui_bin" 2>&1 | grep -F "Signature=adhoc"
-          codesign -dv --verbose=4 "$sidecar" 2>&1 | grep -F "Signature=adhoc"
+          # codesign --verify fails these ad-hoc Mach-Os with
+          # "code has no resources but signature indicates they must be present".
+          # That is how the unsigned candidate is signed. Require ad-hoc and
+          # do not treat the resources mismatch as a signed-release failure.
+          gui_sign="$(codesign -dv --verbose=4 "$gui_bin" 2>&1 || true)"
+          side_sign="$(codesign -dv --verbose=4 "$sidecar" 2>&1 || true)"
+          printf '%s\n' "$gui_sign" | grep -F "Signature=adhoc"
+          printf '%s\n' "$side_sign" | grep -F "Signature=adhoc"
+          if printf '%s\n' "$gui_sign" "$side_sign" | grep -F "Authority="; then
+            echo "candidate must stay ad-hoc; found an Authority." >&2
+            exit 1
+          fi
 
       - name: Validate Windows candidate
         if: matrix.target == 'x86_64-pc-windows-msvc'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          trap { Write-Host "VALIDATE FAILED: $_"; exit 1 }
           $bundles = @(
             Get-ChildItem -LiteralPath "gui/src-tauri/target/release/bundle/nsis" `
               -Filter "*.exe" -File
