@@ -111,7 +111,9 @@ jobs:
             exit 1
           fi
           app="${apps[0]}"
-          gui_bin="$app/Contents/MacOS/zcode-keysmith"
+          # Tauri 2 names the Mach-O after the Cargo package (`zcode-keysmith-gui`),
+          # not productName (`zcode-keysmith`). The .app / DMG still use productName.
+          gui_bin="$app/Contents/MacOS/zcode-keysmith-gui"
           sidecar="$app/Contents/MacOS/zcode-keysmith-cli"
           test -x "$gui_bin"
           test -x "$sidecar"
@@ -184,13 +186,10 @@ jobs:
             }
             $installed = $true
 
+            # Installed GUI follows the Cargo package name, not productName.
             $apps = @(
               Get-ChildItem -LiteralPath $installDir -Recurse `
-                -Filter "zcode-keysmith*.exe" -File |
-                Where-Object {
-                  $_.Name -ne "zcode-keysmith-cli.exe" -and
-                  $_.Name -notlike "uninstall*"
-                }
+                -Filter "zcode-keysmith-gui.exe" -File
             )
             $sidecars = @(
               Get-ChildItem -LiteralPath $installDir -Recurse `

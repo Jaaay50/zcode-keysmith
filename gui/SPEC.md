@@ -38,7 +38,7 @@ Rust 侧对 CLI 的全部责任：
 2. **启动**：`Command::new(program).args(argv)`——argv 数组，**永不** shell 字符串拼接。`kill_on_drop(true)`。Unix `process_group(0)`；Windows `CREATE_NEW_PROCESS_GROUP`。
 3. **限量**：stdout/stderr 各 2 MiB 上限；超限继续排空管道（避免子进程阻塞在满管道上），但标记截断并以「输出不完整」失败关闭。
 4. **限时**：默认 30 s；`cli_version` 探测 15 s；前端写操作 120 s。超时杀**整棵进程树**：Unix `kill(-pid, SIGKILL)`（覆盖 PyInstaller bootloader 子孙）；Windows `taskkill /PID <pid> /T /F`。
-5. **管道 drain**：leader `wait()` 之后用 500 ms `finish_read_task` 收 stdout/stderr。超时则 abort reader，再给 100 ms 取消宽限期。**leader 已退出、子孙仍持有管道时**，对启动时保存的 pid 进程组再发 SIGKILL（`timeout_covers_pipes_after_leader_exit`），不得再查已 reap 的 `child.id()`。
+5. **管道 drain**：leader `wait()` 之后用 500 ms `finish_read_task` 收 stdout/stderr。reader 每读一块就把快照推进 `watch`。超时则 abort reader，再给 100 ms 取消宽限期；宽限期拿不到 join 结果时用快照，已读到的 stdout/stderr 不丢。**leader 已退出、子孙仍持有管道时**，对启动时保存的 pid 进程组再发 SIGKILL（`timeout_covers_pipes_after_leader_exit` 同时核对子孙仍在该组），不得再查已 reap 的 `child.id()`。
 6. **解码**：UTF-8 lossy。
 
 暴露给前端的 Tauri command：`cli_run` / `detect_cli` / `cli_version` / `cli_runtime` / `read_manifest`（`src-tauri/src/lib.rs`）。`read_manifest` 只读托管目录下精确文件名 `config.json`。
