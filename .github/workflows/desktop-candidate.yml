@@ -156,7 +156,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          trap { Write-Host "VALIDATE FAILED: $_"; exit 1 }
+          Write-Host "windows candidate validation starting"
           $bundles = @(
             Get-ChildItem -LiteralPath "gui/src-tauri/target/release/bundle/nsis" `
               -Filter "*.exe" -File
@@ -192,12 +192,16 @@ jobs:
               throw "candidate must remain unsigned; installer signature is $installerSignature"
             }
 
+            Write-Host "installing $($bundles[0].FullName) into $installDir"
             $installer = Start-Process -FilePath $bundles[0].FullName `
               -ArgumentList @("/S", "/D=$installDir") -Wait -PassThru
+            Write-Host "installer exit $($installer.ExitCode)"
             if ($installer.ExitCode -ne 0) {
               throw "NSIS candidate installation failed with exit code $($installer.ExitCode)."
             }
             $installed = $true
+            Write-Host "installed files:"
+            Get-ChildItem -LiteralPath $installDir -Recurse -File | ForEach-Object { Write-Host $_.FullName }
 
             # Installed GUI follows the Cargo package name, not productName.
             $apps = @(
@@ -234,6 +238,8 @@ jobs:
             $doctorExit = $LASTEXITCODE
             $ErrorActionPreference = $previousErrorAction
             $doctorText = ($doctorOutput | Out-String)
+            Write-Host "doctor exit $doctorExit"
+            Write-Host $doctorText
             if ($doctorText -notmatch '"schema": "zcode-keysmith/v1"') {
               throw "Installed sidecar doctor --json smoke failed (exit $doctorExit): $doctorText"
             }
