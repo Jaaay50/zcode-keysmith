@@ -138,8 +138,14 @@ jobs:
           fi
           rm -rf "$smoke_root"
 
-          codesign --verify --deep --strict --verbose=2 "$app"
+          # --deep on an ad-hoc PyInstaller sidecar reports
+          # "code has no resources but signature indicates they must be present"
+          # even when the bundle is the unsigned candidate we ship. Verify the
+          # app and the sidecar separately, and require Signature=adhoc.
+          codesign --verify --strict --verbose=2 "$app"
+          codesign --verify --strict --verbose=2 "$sidecar"
           codesign -dv --verbose=4 "$app" 2>&1 | grep -F "Signature=adhoc"
+          codesign -dv --verbose=4 "$sidecar" 2>&1 | grep -F "Signature=adhoc"
 
       - name: Validate Windows candidate
         if: matrix.target == 'x86_64-pc-windows-msvc'
@@ -211,11 +217,16 @@ jobs:
 
             New-Item -ItemType Directory -Force -Path $smokeRoot | Out-Null
             $launchAgent = Join-Path $smokeRoot "com.jia.zcode-keysmith.env.plist"
+            # An empty dir is not installed, so doctor exits 1. Stop would
+            # turn that into a failed step before the schema check runs.
+            $previousErrorAction = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
             $doctorOutput = & $sidecars[0].FullName doctor --json `
               --managed-dir $smokeRoot `
               --launch-agent $launchAgent `
               --zcode-runtime (Join-Path $smokeRoot "zcode.cjs") `
               --node-command (Join-Path $smokeRoot "node") 2>&1
+            $ErrorActionPreference = $previousErrorAction
             $doctorText = ($doctorOutput | Out-String)
             if ($doctorText -notmatch '"schema": "zcode-keysmith/v1"') {
               throw "Installed sidecar doctor --json smoke failed: $doctorText"
