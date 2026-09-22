@@ -43,7 +43,7 @@ npm run bundle
 | macOS Apple Silicon | `zcode-keysmith-cli-aarch64-apple-darwin` | `.app` + ARM64 `.dmg` |
 | Windows x64 | `zcode-keysmith-cli-x86_64-pc-windows-msvc.exe` | current-user NSIS `.exe` |
 
-首版 GUI 为 `0.1.0-beta.1`。Windows 安装器使用 WebView2 download bootstrapper、禁止降级，当前不生成 MSI。
+首版 GUI 为 `0.1.0-beta.1`，sidecar 包 master 上的 CLI `0.3.2`。Windows 安装器使用 WebView2 download bootstrapper、禁止降级，当前不生成 MSI。本轮不签名、不公证、不做 Linux / Intel Mac。
 
 图标以 `src-tauri/icons/source.png` 为唯一源文件。修改后运行：
 
@@ -63,7 +63,9 @@ cargo test --manifest-path src-tauri/Cargo.toml --locked
 cargo check --manifest-path src-tauri/Cargo.toml --locked
 ```
 
-安装包验收还需验证目标架构、GUI/CLI 版本、设置页 source commit 与发布标签 peeled commit 一致、sidecar `--version`、全流程临时目录测试、关闭窗口后无 GUI/sidecar 驻留进程、最终图标、签名和公证状态。Windows candidate CI 会额外隔离用户配置目录与 Codex Desktop 运行目录，验证自动发现只报告包含配置证据的目录、活动 sidecar 进程树完成后排队退出、二次启动回到现有窗口，并通过原生关闭请求和截止时间轮询验证无托盘退出语义。
+安装包验收验证目标架构、GUI `0.1.0-beta.1`、bundled CLI = 根 `VERSION`（本轮 `0.3.2`，不是 Latest tag `v0.3.1` zip）、sidecar `--version`、隔离目录 `doctor --json`（schema `zcode-keysmith/v1`，不得出现本机 `~/Library/LaunchAgents/com.jia.zcode-keysmith.env.plist`）、关闭窗口后无 GUI/sidecar 驻留进程。候选包 unsigned：macOS 仅 ad-hoc，Windows 无 Authenticode，两端均无公证、无 auto-update。
+
+桌面候选 CI 是 `.github/workflows/desktop-candidate.yml`：macos-15 arm64 DMG + windows-2025 NSIS，原生 sidecar。不跑 Codex scenario / fixture 烟测。本仓库此前没有 Windows candidate CI；那是抄来的错误陈述。
 
 ## 功能
 
