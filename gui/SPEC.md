@@ -105,7 +105,7 @@ localStorage 单键 `zcode-keysmith-gui:settings`：`cliPath`（留空 = 自动�
 - **frozen 资源**：打包前检查 `zcode-keysmith.py` 的 `REPO_ROOT` 在 frozen 时解析 `sys._MEIPASS`；缺失则打等效 source patch，契约变了则拒绝打包。`examples/` 以 `--add-data` 进入 `sys._MEIPASS`。
 - 构建环境净化：`PYTHONNOUSERSITE=1`，删除 `PYTHONHOME` / `PYTHONPATH` / `PYTHONUSERBASE`；`PYTHON` 环境变量指定解释器（需 `pip install -r requirements-build.txt`）。
 - 产物原子落位 `src-tauri/binaries/zcode-keysmith-cli-<triple>[.exe]`（先复制到临时名再 rename，Unix 下 `chmod 755`）。
-- 烟雾测试：`--version` 必须等于根 `VERSION`（本轮 `0.3.2`）；隔离临时目录下 `doctor --json --managed-dir/--launch-agent/--zcode-runtime/--node-command` 必须产出 `schema: zcode-keysmith/v1`。stdout 若出现本机 `~/Library/LaunchAgents/com.jia.zcode-keysmith.env.plist` 路径，构建失败。
+- 烟雾测试：`--version` 必须等于根 `VERSION`（本轮 `0.3.2`）；隔离临时目录下 `doctor --json --managed-dir/--launch-agent/--zcode-runtime/--node-command` 必须产出 `schema: zcode-keysmith/v1`。空目录没有安装，doctor 以 exit 1 和 blockers 结束，这是契约，不是打包失败。stdout/stderr 若出现本机 `~/Library/LaunchAgents/com.jia.zcode-keysmith.env.plist` 路径，构建失败。
 - `npm run bundle` 是唯一打包入口：先构建 sidecar，再加载 `tauri.bundle.conf.json` 启用 bundle 并声明 `externalBin`。常驻配置 `bundle.active=false`，裸 `tauri build` 只产 executable；即使显式传 `--bundles`，默认 `beforeBundleCommand` 也会拒绝。overlay 覆盖该 hook 后仍按 `TAURI_ENV_TARGET_TRIPLE` 校验目标 sidecar 存在且可执行。
 - macOS 目标由 `tauri.macos.conf.json` 声明 `app` + `dmg`；Windows 由 `tauri.windows.conf.json` 声明 NSIS currentUser + WebView2 downloadBootstrapper。无签名、无公证、无 auto-update。
 - 桌面候选 CI：`.github/workflows/desktop-candidate.yml`，macos-15 arm64 DMG + windows-2025 NSIS，原生 sidecar，`--version` 与隔离目录 `doctor --json`。不跑 Codex scenario / fixture 烟测。

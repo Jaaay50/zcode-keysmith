@@ -124,6 +124,8 @@ jobs:
 
           smoke_root="$(mktemp -d "${RUNNER_TEMP}/zcode-keysmith-sidecar-smoke.XXXXXX")"
           launch_agent="$smoke_root/com.jia.zcode-keysmith.env.plist"
+          # doctor exits 1 when the temp dir is empty. That is the contract,
+          # not a broken sidecar. Only the schema and the path check matter.
           doctor_output="$("$sidecar" doctor --json \
             --managed-dir "$smoke_root" \
             --launch-agent "$launch_agent" \
