@@ -226,17 +226,13 @@ jobs:
 
             New-Item -ItemType Directory -Force -Path $smokeRoot | Out-Null
             $launchAgent = Join-Path $smokeRoot "com.jia.zcode-keysmith.env.plist"
-            # An empty dir is not installed, so doctor exits 1. pwsh 7
-            # records that as NativeCommandError even when ErrorAction is
-            # Continue. Drop the preference for this call only.
-            $PSNativeCommandUseErrorActionPreference = $false
-            $doctorOutput = & $sidecars[0].FullName doctor --json `
-              --managed-dir $smokeRoot `
-              --launch-agent $launchAgent `
-              --zcode-runtime (Join-Path $smokeRoot "zcode.cjs") `
-              --node-command (Join-Path $smokeRoot "node") 2>&1
+            # An empty dir is not installed, so doctor exits 1. Calling it
+            # through cmd keeps that code out of pwsh's error stream.
+            $doctorFile = Join-Path $smokeRoot "doctor.json"
+            $quotedSidecar = '"' + $sidecars[0].FullName + '"'
+            cmd /c "$quotedSidecar doctor --json --managed-dir `"$smokeRoot`" --launch-agent `"$launchAgent`" --zcode-runtime `"$smokeRoot\zcode.cjs`" --node-command `"$smokeRoot\node`" > `"$doctorFile`" 2>&1"
             $doctorExit = $LASTEXITCODE
-            $PSNativeCommandUseErrorActionPreference = $true
+            $doctorText = Get-Content -LiteralPath $doctorFile -Raw
             $doctorText = ($doctorOutput | Out-String)
             Write-Host "doctor exit $doctorExit"
             Write-Host $doctorText
