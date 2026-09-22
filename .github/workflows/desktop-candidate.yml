@@ -226,13 +226,22 @@ jobs:
 
             New-Item -ItemType Directory -Force -Path $smokeRoot | Out-Null
             $launchAgent = Join-Path $smokeRoot "com.jia.zcode-keysmith.env.plist"
-            # An empty dir is not installed, so doctor exits 1. Calling it
-            # through cmd keeps that code out of pwsh's error stream.
+            # An empty dir is not installed, so doctor exits 1. Start-Process
+            # keeps that code off pwsh's error stream. The schema check below
+            # is what decides.
             $doctorFile = Join-Path $smokeRoot "doctor.json"
-            $quotedSidecar = '"' + $sidecars[0].FullName + '"'
-            cmd /c "$quotedSidecar doctor --json --managed-dir `"$smokeRoot`" --launch-agent `"$launchAgent`" --zcode-runtime `"$smokeRoot\zcode.cjs`" --node-command `"$smokeRoot\node`" > `"$doctorFile`" 2>&1"
-            $doctorExit = $LASTEXITCODE
-            $doctorText = Get-Content -LiteralPath $doctorFile -Raw
+            $doctorErr = Join-Path $smokeRoot "doctor.err"
+            $doctorProc = Start-Process -FilePath $sidecars[0].FullName -ArgumentList @(
+              "doctor", "--json",
+              "--managed-dir", $smokeRoot,
+              "--launch-agent", $launchAgent,
+              "--zcode-runtime", (Join-Path $smokeRoot "zcode.cjs"),
+              "--node-command", (Join-Path $smokeRoot "node")
+            ) -Wait -PassThru -RedirectStandardOutput $doctorFile -RedirectStandardError $doctorErr
+            $doctorExit = $doctorProc.ExitCode
+            $doctorText = ""
+            if (Test-Path -LiteralPath $doctorFile) { $doctorText += Get-Content -LiteralPath $doctorFile -Raw }
+            if (Test-Path -LiteralPath $doctorErr) { $doctorText += Get-Content -LiteralPath $doctorErr -Raw }
             $doctorText = ($doctorOutput | Out-String)
             Write-Host "doctor exit $doctorExit"
             Write-Host $doctorText
