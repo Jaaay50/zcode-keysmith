@@ -10,9 +10,10 @@
 
 ## [0.3.3] - 待发布
 
-- **项目内破限失效（#31）：** runtime-patch 在 0.3.2 的 customSystemPrompt 替换、CLI-prefix skip、agentsMd OVERRIDE 中和之外，跳过把项目 `MEMORY.md` auto-memory 挂进 agentsMd。ZCode 把任务放进「项目」后会把 MEMORY.md 注入为 user 上下文；即使 system 已是 Pier，条目里的 standing refusal 仍会盖过人格。不改 `examples/system-role.md`，不增加 system 提示词体积。已打补丁的 runtime 走 follow-up，不必重找主锚点。
+- **项目内破限失效（#31）：** runtime-patch 在 0.3.2 的 customSystemPrompt 替换、CLI-prefix skip、agentsMd OVERRIDE 中和之外，跳过把项目 `MEMORY.md` auto-memory 挂进 agentsMd。ZCode 把任务放进「项目」后会把 MEMORY.md 注入为 user 上下文；即使 system 已是 Pier，条目里的 standing refusal 仍会盖过人格。已打补丁的 runtime 走 follow-up，不必重找主锚点。
 - 去掉 agentsMd 模板里的 `Be sure to adhere to these instructions.`
 - `doctor` 报告 `runtime_memory_skipped` / JSON `memory_skipped`，不再探测本机项目路径上的 memory-index lexicon。
+- **system-role：** 去掉本机硬件绑定（M3 Air）和家目录路径示例；游戏修改按实际 OS/架构选工具链，不写死兼容层产品名。Persona、`[P]`、One Line 不变。
 
 ## [0.3.2] - 待发布
 
